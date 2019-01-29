@@ -29,7 +29,7 @@ using Distributions
    return((t,vals));
  end
  
- return(update);
+ return(rng,update);
 end
 
 @everywhere function lifespan(vals)
@@ -60,22 +60,26 @@ end
   return((vals = vals, t0 = sc.t0, tdiv = tdiv))
 end
 
-function nextDiv()
-  1.0 + randn()/10.0
+@everywhere function simulateSC(sc)
+  return((vals = [2*x for x in sc.vals], t0 = sc.t0, tdiv = sc.tdiv))
 end
 
-function divideCell(sc,pSN = 0.75)
+function nextDiv(rng)
+  1.0 + randn(rng)/10.0
+end
+
+function divideCell(sc,rng,pSN)
  wildtypes = vcat(fill(true,sc.vals[1]),fill(false,sc.vals[2]))
  d1 = rand(Bool,length(wildtypes))
  d2 = [!x for x in d1]
  daughter1 = wildtypes[d1]
  daughter2 = wildtypes[d2]
- born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv())
- born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv())
+ born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng))
+ born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng))
 
  fate = rand()
  pSS = (1.0 - pSN)/2.0
- if fate < pSS # S -> 2S
+ if fate <= pSS # S -> 2S
    cell1 = simulateSC(born1)
    cell2 = simulateSC(born2)
    return([cell1,cell2])
@@ -88,39 +92,40 @@ function divideCell(sc,pSN = 0.75)
 end
 
 @everywhere ss = 400
-@everywhere update = prepareSimulation(target = ss)
+@everywhere rng, update = prepareSimulation(target = ss, seed = nothing)
 
-#time = @elapsed resarr = pmap(lifespan,fill([ss,0],4))
+time = @elapsed resarr = pmap(lifespan,fill([ss,0],4))
 
-#res = resarr[1]
-#plot(res.age/365.0,hcat(res.mut+res.wt,res.mut,res.wt),title="Stem cell mtDNA population dynamics",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number")
-
-stemcells = [
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv()),
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv()),
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv()),
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv()),
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv()),
-(vals = [400,0], t0 = 0.0, tdiv = nextDiv())
-]
-
-times = [0.0]
-results = []
-
-while times[end] < 5.0
-  append!(results,[stemcells])
-  dividingIndex = argmin([x.tdiv for x in stemcells])
-  dividingCell = stemcells[dividingIndex]
-  deleteat!(stemcells,dividingIndex)
-  append!(times,dividingCell.tdiv)
-  append!(stemcells,divideCell(dividingCell))
+function plotRes(res)
+  plot(res.age/365.0,res.mut+res.wt,title="mtDNA single cell",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number",ylims = (0,1.25*ss));
+  plot!(res.age/365.0,res.mut);
+  plot!(res.age/365.0,res.wt);
+  plot!(size = (600,600));
 end
-  
-  
-  
-  
-  
-  
 
+parr = plot([plotRes(res) for res in resarr[1:4]] ...,layout=(2,2))
+savefig(parr,"test.pdf")
 
+# stemcells = [
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
+# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng))
+# ]
 
+# times = [0.0]
+# results = []
+
+# while (times[end] < 500.0) & (length(stemcells) > 0)
+  # global stemcells
+  # global results
+  # global times
+  # push!(results,copy(stemcells))
+  # dividingIndex = argmin([x.tdiv for x in stemcells])
+  # dividingCell = stemcells[dividingIndex]
+  # deleteat!(stemcells,dividingIndex)
+  # push!(times,dividingCell.tdiv)
+  # append!(stemcells,divideCell(dividingCell,rng,0.75))
+# end
