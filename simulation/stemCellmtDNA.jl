@@ -2,6 +2,7 @@ using Distributed
 using Plots
 using ProgressMeter
 using Distributions
+using Printf
 @everywhere using Random
 
 @everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
@@ -94,17 +95,29 @@ end
 @everywhere ss = 400
 @everywhere rng, update = prepareSimulation(target = ss, seed = nothing)
 
-time = @elapsed resarr = pmap(lifespan,fill([ss,0],4))
+time = @elapsed resarr = pmap(lifespan,fill([ss,0],24*5))
 
 function plotRes(res)
   plot(res.age/365.0,res.mut+res.wt,title="mtDNA single cell",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number",ylims = (0,1.25*ss));
   plot!(res.age/365.0,res.mut);
   plot!(res.age/365.0,res.wt);
-  plot!(size = (600,600));
+  plot!(size = (1200,1200));
 end
 
-parr = plot([plotRes(res) for res in resarr[1:4]] ...,layout=(2,2))
-savefig(parr,"test.pdf")
+nrow = 3
+ncol = 4
+for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
+  parr = plot([plotRes(res) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol),aspect_ratio = 0.1)
+  fname = @sprintf("test%02d.png",i)
+  savefig(parr,fname)
+end
+
+https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
+func = interpolate((r.age,),r.wt, Gridded(Linear()));
+
+ages = collect(0:100) # range(0,100,length=101)
+reports = [interpolate((r.age,),r.wt, Gridded(Linear()))(ages)
+
 
 # stemcells = [
 # (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
