@@ -2,7 +2,9 @@ using Distributed
 using Plots
 using ProgressMeter
 using Distributions
+using Statistics
 using Printf
+using Interpolations
 @everywhere using Random
 
 @everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
@@ -10,7 +12,7 @@ using Printf
    seed = rand(0:999999999);
  end   
  rng = Random.MersenneTwister(seed);
- delta_wt = [1,-1,-1,0,0];
+ delta_wt = [1,-1,0,0,0];
  delta_mut = [0,0,1,1,-1];
  rwt = dwt * rfwt;
  rmut = dmut * rfmut;
@@ -21,7 +23,8 @@ using Printf
    tot = wt + mut;
    Fwt = wt/tot;
    Fmut = mut/tot;
-   haz = [((dwt - rwt)*target*Fwt + rwt*wt)*(1-m), dwt*wt, ((dwt - rwt)*target*Fwt + rwt*wt)*m, (dmut - rmut)*target*Fmut + rmut*mut, dmut*mut];
+   #haz = [((dwt - rwt)*target*Fwt + rwt*wt)*(1-m), dwt*wt, ((dwt - rwt)*target*Fwt + rwt*wt)*m, (dmut - rmut)*target*Fmut + rmut*mut, dmut*mut]; # control
+   haz = [(dwt*wt)*(1-m), dwt*wt, (dwt*wt)*m, dmut*mut, dmut*mut];
    hazfrac = cumsum(haz/sum(haz));
    index = minimum(findall(hazfrac .- Random.rand(rng) .> 0));
    t = t + (1.0/sum(haz))*(Random.randexp(rng));
@@ -51,7 +54,11 @@ end
 
 @everywhere function simulate(t, vals, tmax)
   while t < tmax
-    t, vals = update(t, vals)
+    if sum(vals) >= 0
+      t, vals = update(t, vals)
+	else
+	  t, vals = tmax, vals
+	end
   end
   return(t,vals)
 end
@@ -92,11 +99,6 @@ function divideCell(sc,rng,pSN)
  end
 end
 
-@everywhere ss = 400
-@everywhere rng, update = prepareSimulation(target = ss, seed = nothing)
-
-time = @elapsed resarr = pmap(lifespan,fill([ss,0],24*5))
-
 function plotRes(res)
   plot(res.age/365.0,res.mut+res.wt,title="mtDNA single cell",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number",ylims = (0,1.25*ss));
   plot!(res.age/365.0,res.mut);
@@ -104,19 +106,49 @@ function plotRes(res)
   plot!(size = (1200,1200));
 end
 
+@everywhere ss = 400
+@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
+
+println("Starting simulations!")
+time = @elapsed resarr = pmap(lifespan,fill([ss,200],24))
+println(time)
+print('\a')
+
 nrow = 3
 ncol = 4
 for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
-  parr = plot([plotRes(res) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol),aspect_ratio = 0.1)
+  parr = plot([plotRes(res) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
   fname = @sprintf("test%02d.png",i)
   savefig(parr,fname)
 end
 
-https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
-func = interpolate((r.age,),r.wt, Gridded(Linear()));
+# https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
+# func = interpolate((r.age,),r.wt, Gridded(Linear()));
 
-ages = collect(0:100) # range(0,100,length=101)
-reports = [interpolate((r.age,),r.wt, Gridded(Linear()))(ages)
+ages = collect(range(0,100*365,length=101))
+mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
+totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
+fracarr = mutarr./totarr;
+low = [quantile(fracarr[i,:],0.1) for i in 1:length(ages)];
+mid = [quantile(fracarr[i,:],0.5) for i in 1:length(ages)];
+hig = [quantile(fracarr[i,:],0.9) for i in 1:length(ages)];
+
+quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1))
+plot!(ages/365.0,mid,lw=2)
+plot!(ages/365.0,hig,lw=1)
+savefig(quantplot, "quantplot.png")
+
+dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1))
+plot!(ages/365.0, fracarr, linealpha=0.1, linecolour=:black)
+savefig(dynplot, "dynplot.png")
+
+function overThresh(thresh, fracarr)
+  [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
+end
+
+threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding threshold", ylims = (0,1))
+plot!(ages/365.0, overThresh(0.8,fracarr), linecolour=:black)
+savefig(threshplot, "threshplot.png")
 
 
 # stemcells = [
