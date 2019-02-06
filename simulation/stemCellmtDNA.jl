@@ -111,17 +111,19 @@ end
 #@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600))
+time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600*9))
 println(time)
 print('\a')
 
 nrow = 3
 ncol = 4
 ymax = maximum([maximum([maximum(res.mut),maximum(res.wt),maximum(res.mut+res.wt)]) for res in resarr])
-for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
-  parr = plot([plotRes(res,0,ymax) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
-  fname = @sprintf("test%02d.png",i)
-  savefig(parr,fname)
+if ymax <= 100
+ for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
+   parr = plot([plotRes(res,0,ymax) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
+   fname = @sprintf("test%02d.png",i)
+   savefig(parr,fname)
+ end
 end
 
 # https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
@@ -153,9 +155,9 @@ plot!(ages/365.0,mid,lw=2)
 plot!(ages/365.0,hig,lw=1)
 savefig(quantplot, "quantplot.png")
 
-dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
-plot!(ages/365.0, fracarr, linealpha=0.1, linecolour=:black)
-savefig(dynplot, "dynplot.png")
+#dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
+#plot!(ages/365.0, fracarr, linealpha=0.1, linecolour=:black)
+#savefig(dynplot, "dynplot.png")
 
 function overThresh(thresh, fracarr)
   [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
