@@ -24,7 +24,7 @@ using Interpolations
    Fwt = wt/tot;
    Fmut = mut/tot;
    #haz = [((dwt - rwt)*target*Fwt + rwt*wt)*(1-m), dwt*wt, ((dwt - rwt)*target*Fwt + rwt*wt)*m, (dmut - rmut)*target*Fmut + rmut*mut, dmut*mut]; # control
-   haz = [(dwt*wt)*(1-m), dwt*wt, (dwt*wt)*m, dmut*mut, dmut*mut];
+   haz = [(rwt*wt)*(1-m), dwt*wt, (rwt*wt)*m, rmut*mut, dmut*mut];
    hazfrac = cumsum(haz/sum(haz));
    index = minimum(findall(hazfrac .- Random.rand(rng) .> 0));
    t = t + (1.0/sum(haz))*(Random.randexp(rng));
@@ -54,7 +54,7 @@ end
 
 @everywhere function simulate(t, vals, tmax)
   while t < tmax
-    if sum(vals) >= 0
+    if sum(vals) > 0
       t, vals = update(t, vals)
 	else
 	  t, vals = tmax, vals
@@ -129,9 +129,20 @@ ages = collect(range(0,100*365,length=101))
 mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
 totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
 fracarr = mutarr./totarr;
-low = [quantile(fracarr[i,:],0.1) for i in 1:length(ages)];
-mid = [quantile(fracarr[i,:],0.5) for i in 1:length(ages)];
-hig = [quantile(fracarr[i,:],0.9) for i in 1:length(ages)];
+
+function getQuant(x,q)
+  x = x[findall(.!isnan.(x))]
+  if length(x) > 0
+    res = quantile(x,q)
+  else
+    res = NaN
+  end
+  return(res)
+end
+
+low = [getQuant(fracarr[i,:],0.1) for i in 1:length(ages)];
+mid = [getQuant(fracarr[i,:],0.5) for i in 1:length(ages)];
+hig = [getQuant(fracarr[i,:],0.9) for i in 1:length(ages)];
 
 quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1))
 plot!(ages/365.0,mid,lw=2)
