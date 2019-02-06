@@ -23,8 +23,8 @@ using Interpolations
    tot = wt + mut;
    Fwt = wt/tot;
    Fmut = mut/tot;
-   #haz = [((dwt - rwt)*target*Fwt + rwt*wt)*(1-m), dwt*wt, ((dwt - rwt)*target*Fwt + rwt*wt)*m, (dmut - rmut)*target*Fmut + rmut*mut, dmut*mut]; # control
-   haz = [(rwt*wt)*(1-m), dwt*wt, (rwt*wt)*m, rmut*mut, dmut*mut];
+   haz = [((dwt - rwt)*target*Fwt + rwt*wt)*(1-m), dwt*wt, ((dwt - rwt)*target*Fwt + rwt*wt)*m, (dmut - rmut)*target*Fmut + rmut*mut, dmut*mut]; # control
+   #haz = [(rwt*wt)*(1-m), dwt*wt, (rwt*wt)*m, rmut*mut, dmut*mut];
    hazfrac = cumsum(haz/sum(haz));
    index = minimum(findall(hazfrac .- Random.rand(rng) .> 0));
    t = t + (1.0/sum(haz))*(Random.randexp(rng));
@@ -99,25 +99,27 @@ function divideCell(sc,rng,pSN)
  end
 end
 
-function plotRes(res)
-  plot(res.age/365.0,res.mut+res.wt,title="mtDNA single cell",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number",ylims = (0,1.25*ss));
+function plotRes(res, ymin = 0, ymax=1000)
+  plot(res.age/365.0,res.mut+res.wt,title="mtDNA single cell",lw=2,legend = false,xlabel="Age (y)",ylabel="Copy Number",ylims = (ymin,ymax));
   plot!(res.age/365.0,res.mut);
   plot!(res.age/365.0,res.wt);
   plot!(size = (1200,1200));
 end
 
-@everywhere ss = 400
-@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
+@everywhere ss = 200
+@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.01, rfmut = 0.25, dmut = 0.01, m = 3e-5, target = ss, seed = nothing)
+#@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(lifespan,fill([ss,200],24))
+time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600))
 println(time)
 print('\a')
 
 nrow = 3
 ncol = 4
+ymax = maximum([maximum([maximum(res.mut),maximum(res.wt),maximum(res.mut+res.wt)]) for res in resarr])
 for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
-  parr = plot([plotRes(res) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
+  parr = plot([plotRes(res,0,ymax) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
   fname = @sprintf("test%02d.png",i)
   savefig(parr,fname)
 end
@@ -144,12 +146,14 @@ low = [getQuant(fracarr[i,:],0.1) for i in 1:length(ages)];
 mid = [getQuant(fracarr[i,:],0.5) for i in 1:length(ages)];
 hig = [getQuant(fracarr[i,:],0.9) for i in 1:length(ages)];
 
-quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1))
+mlab = @sprintf("Number of cells: %i",length(resarr))
+
+quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
 plot!(ages/365.0,mid,lw=2)
 plot!(ages/365.0,hig,lw=1)
 savefig(quantplot, "quantplot.png")
 
-dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1))
+dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
 plot!(ages/365.0, fracarr, linealpha=0.1, linecolour=:black)
 savefig(dynplot, "dynplot.png")
 
@@ -157,9 +161,10 @@ function overThresh(thresh, fracarr)
   [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
 end
 
-threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding threshold", ylims = (0,1))
+threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding threshold", ylims = (0,1),title = mlab)
 plot!(ages/365.0, overThresh(0.8,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
+print('\a')
 
 
 # stemcells = [
