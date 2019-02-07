@@ -5,6 +5,8 @@ using Distributions
 using Statistics
 using Printf
 using Interpolations
+import JSON
+import Dates
 @everywhere using Random
 
 @everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
@@ -72,22 +74,29 @@ end
   return((vals = [2*x for x in sc.vals], t0 = sc.t0, tdiv = sc.tdiv))
 end
 
-function nextDiv(rng)
-  1.0 + randn(rng)/10.0
+function nextDiv(rng; mu=5, sigma=0.1)
+  return(max(0,rand(rng,Normal(mu,sigma))))
 end
 
-function divideCell(sc,rng,pSN)
+function divideCell(sc, rng, pSN; N = 7, targ = 7, delta = 2, mu = 10, sigma = 1)
+ # Randomly assign division type, except when overall stem cell population (N) has become too small (l.t. targ - delta) or too large (g.t. targ + delta)
  wildtypes = vcat(fill(true,sc.vals[1]),fill(false,sc.vals[2]))
  d1 = rand(Bool,length(wildtypes))
  d2 = [!x for x in d1]
  daughter1 = wildtypes[d1]
  daughter2 = wildtypes[d2]
- born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng))
- born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng))
+ born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng, mu, sigma))
+ born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng, mu, sigma))
 
  fate = rand()
  pSS = (1.0 - pSN)/2.0
- if fate <= pSS # S -> 2S
+ if (N < targ - delta) # S -> 2S
+   cell1 = simulateSC(born1)
+   cell2 = simulateSC(born2)
+   return([cell1,cell2])
+ elseif (N > targ + delta) # S -> 2N
+   return([])
+ elseif fate <= pSS  # S -> 2S
    cell1 = simulateSC(born1)
    cell2 = simulateSC(born2)
    return([cell1,cell2])
@@ -106,6 +115,30 @@ function plotRes(res, ymin = 0, ymax=1000)
   plot!(size = (1200,1200));
 end
 
+function removeDefective(fracarr, thresh = 1.0)
+  fracadj = copy(fracarr)
+  for i in 1:size(fracarr)[2]
+    ff = findfirst(fracarr[:,i].>thresh)
+    if ff != nothing
+      for j in ff:size(fracarr)[1]
+       fracadj[j,i] = NaN
+      end
+    end
+  end
+  return(fracadj)
+end  
+
+function getQuant(x,q)
+  x = x[findall(.!isnan.(x))]
+  if length(x) > 0
+    res = quantile(x,q)
+  else
+    res = NaN
+  end
+  return(res)
+end
+
+
 @everywhere ss = 200
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.01, rfmut = 0.25, dmut = 0.01, m = 3e-5, target = ss, seed = nothing)
 #@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
@@ -114,6 +147,23 @@ println("Starting simulations!")
 time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600*9))
 println(time)
 print('\a')
+
+# https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
+# func = interpolate((r.age,),r.wt, Gridded(Linear()));
+
+ages = collect(range(0,100*365,length=101))
+mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
+totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
+
+anint = rand(0:999999999)
+fname = @sprintf("mutarr_%09d.json",anint)
+open(@sprintf("mutarr_%09d.json",anint),"w") do f
+    JSON.print(f, mutarr);
+end
+
+open(@sprintf("totarr_%09d.json",anint),"w") do f
+    JSON.print(f, totarr);
+end
 
 nrow = 3
 ncol = 4
@@ -126,23 +176,9 @@ if ymax <= 100
  end
 end
 
-# https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
-# func = interpolate((r.age,),r.wt, Gridded(Linear()));
-
-ages = collect(range(0,100*365,length=101))
-mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
-totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
-fracarr = mutarr./totarr;
-
-function getQuant(x,q)
-  x = x[findall(.!isnan.(x))]
-  if length(x) > 0
-    res = quantile(x,q)
-  else
-    res = NaN
-  end
-  return(res)
-end
+mutfrac = mutarr./totarr;
+#fracarr = mutfrac
+fracarr = removeDefective(mutfrac, 0.85)
 
 low = [getQuant(fracarr[i,:],0.1) for i in 1:length(ages)];
 mid = [getQuant(fracarr[i,:],0.5) for i in 1:length(ages)];
@@ -155,9 +191,9 @@ plot!(ages/365.0,mid,lw=2)
 plot!(ages/365.0,hig,lw=1)
 savefig(quantplot, "quantplot.png")
 
-#dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
-#plot!(ages/365.0, fracarr, linealpha=0.1, linecolour=:black)
-#savefig(dynplot, "dynplot.png")
+dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
+plot!(ages/365.0, fracarr[:,1:1000], linealpha=0.1, linecolour=:black)
+savefig(dynplot, "dynplot.png")
 
 function overThresh(thresh, fracarr)
   [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
@@ -168,27 +204,29 @@ plot!(ages/365.0, overThresh(0.8,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 print('\a')
 
+mu = 10;
+sigma = 1;
+stemcells = [
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
+(vals = [100,010], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma))
+]
 
-# stemcells = [
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng)),
-# (vals = [400,0], t0 = 0.0, tdiv = nextDiv(rng))
-# ]
+times = [0.0]
+results = []
 
-# times = [0.0]
-# results = []
-
-# while (times[end] < 500.0) & (length(stemcells) > 0)
-  # global stemcells
-  # global results
-  # global times
-  # push!(results,copy(stemcells))
-  # dividingIndex = argmin([x.tdiv for x in stemcells])
-  # dividingCell = stemcells[dividingIndex]
-  # deleteat!(stemcells,dividingIndex)
-  # push!(times,dividingCell.tdiv)
-  # append!(stemcells,divideCell(dividingCell,rng,0.75))
-# end
+while (times[end] < 500.0) & (length(stemcells) > 0)
+  global stemcells
+  global results
+  global times
+  N = length(stemcells)
+  push!(results,copy(stemcells))
+  dividingIndex = argmin([x.tdiv for x in stemcells])
+  dividingCell = stemcells[dividingIndex]
+  deleteat!(stemcells,dividingIndex)
+  push!(times,dividingCell.tdiv)
+  append!(stemcells,divideCell(dividingCell, rng, 0.75; N = N, targ = 7, delta = 2, mu = mu, sigma = sigma))
+end
