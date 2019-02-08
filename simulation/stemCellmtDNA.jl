@@ -85,8 +85,8 @@ function divideCell(sc, rng, pSN; N = 7, targ = 7, delta = 2, mu = 10, sigma = 1
  d2 = [!x for x in d1]
  daughter1 = wildtypes[d1]
  daughter2 = wildtypes[d2]
- born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng, mu, sigma))
- born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng, mu, sigma))
+ born1 = (vals = [sum(daughter1),sum([!x for x in daughter1])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng; mu=mu,sigma=sigma))
+ born2 = (vals = [sum(daughter2),sum([!x for x in daughter2])], t0 = sc.tdiv, tdiv = sc.tdiv + nextDiv(rng; mu=mu,sigma=sigma))
 
  fate = rand()
  pSS = (1.0 - pSN)/2.0
@@ -140,11 +140,11 @@ end
 
 
 @everywhere ss = 200
-@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.01, rfmut = 0.25, dmut = 0.01, m = 3e-5, target = ss, seed = nothing)
+@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.075, rfmut = 0.25, dmut = 0.075, m = 3e-5, target = ss, seed = nothing)
 #@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600*9))
+time = @elapsed resarr = pmap(lifespan,fill([ss/2,ss/2],24*600))
 println(time)
 print('\a')
 
@@ -204,21 +204,21 @@ plot!(ages/365.0, overThresh(0.8,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 print('\a')
 
-mu = 10;
-sigma = 1;
+mu = 2;
+sigma = 0.1;
 stemcells = [
-(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
-(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
-(vals = [100,010], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
-(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
-(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma)),
-(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng, mu, sigma))
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)),
+(vals = [100,100], t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma))
 ]
 
 times = [0.0]
 results = []
 
-while (times[end] < 500.0) & (length(stemcells) > 0)
+while (times[end] < 100*365.0) & (length(stemcells) > 0)
   global stemcells
   global results
   global times
@@ -230,3 +230,16 @@ while (times[end] < 500.0) & (length(stemcells) > 0)
   push!(times,dividingCell.tdiv)
   append!(stemcells,divideCell(dividingCell, rng, 0.75; N = N, targ = 7, delta = 2, mu = mu, sigma = sigma))
 end
+
+Ndyn = [(minimum([c.tdiv for c in sc]),length(sc)) for sc in results]
+mtDNA = [(minimum([c.tdiv for c in sc]),sum([c.vals[1] for c in sc]),sum([c.vals[2] for c in sc])) for sc in results]
+summ = [(t = minimum([c.tdiv for c in sc]), N = length(sc), wt = sum([c.vals[1] for c in sc]), mut = sum([c.vals[2] for c in sc])) for sc in results]
+
+
+plot([d[1]/365 for d in Ndyn],[d[2] for d in Ndyn], xlabel="Age (y)", ylabel="Number of stem cells", ylims=(0,maximum([d[2] for d in Ndyn])),legend=false)
+plot([d[1]/365 for d in mtDNA],[100*d[3]/(d[2]+d[3]) for d in mtDNA], xlabel="Age (y)", ylabel="Mutation load (%)", ylims=(0,100),legend=false)
+
+
+
+
+
