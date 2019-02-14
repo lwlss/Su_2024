@@ -8,6 +8,8 @@ using ProgressMeter
 import JSON
 import Dates
 @everywhere using Random
+using DataFrames
+using CSV
 
 @everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
  if seed == nothing 
@@ -38,7 +40,7 @@ import Dates
  return(rng,update);
 end
 
-@everywhere function lifespan(vals, agemax)
+@everywhere function lifespan(vals, agemax; defect_thresh = 1.0)
   ages = collect(0.0:1:(365.0*agemax))
   Nrecs = length(ages)
   res = (age = ages, wt = fill(0,Nrecs), mut = fill(0,Nrecs))
@@ -46,7 +48,7 @@ end
 
   #@showprogress 1 "Simulating..." for rec in 1:Nrecs
   for rec in 1:Nrecs
-   t,vals = simulate(t,vals,res.age[rec])
+   t,vals = simulate(t,vals,res.age[rec], defect_thresh = defect_thresh)
    res.age[rec] = t
    res.wt[rec] = vals[1]
    res.mut[rec] = vals[2]  
@@ -54,19 +56,24 @@ end
   return(res)
 end
 
-@everywhere function simulate(t, vals, tmax)
+@everywhere function simulate(t, vals, tmax; defect_thresh = 1.0)
   while t < tmax
-    if sum(vals) > 0
-      t, vals = update(t, vals)
-	else
-	  t, vals = tmax, vals
+    N = sum(vals)
+    if vals[2]/N <= defect_thresh
+      if sum(vals) > 0
+        t, vals = update(t, vals)
+	  else
+	    t, vals = tmax, vals
+	  end
+	else 
+	  t, vals = tmax, [NaN,NaN]
 	end
   end
   return(t,vals)
 end
 
-@everywhere function simulateSC(sc)
-  tdiv, vals = simulate(sc.t0, sc.vals, sc.tdiv)
+@everywhere function simulateSC(sc; defect_thresh = 1.0)
+  tdiv, vals = simulate(sc.t0, sc.vals, sc.tdiv, defect_thresh = defect_thresh)
   return((vals = vals, t0 = sc.t0, tdiv = tdiv))
 end
 
@@ -79,6 +86,9 @@ end
 end
 
 @everywhere function divideCell(sc, rng, pSN; N = 7, targ = 7, delta = 2, mu = 10, sigma = 1, m = 1e-5, before = true, defect_thresh = 1.0)
+ if sum([isnan(val) for val in sc.vals]) > 0
+   return([])
+ end
  # Randomly assign division type, except when overall stem cell population (N) has become too small (l.t. targ - delta) or too large (g.t. targ + delta)
  wildtypes = vcat(fill(true,sc.vals[1]),fill(false,sc.vals[2]))
  if before # Simulate duplication from N -> 2N before cell division, else, N -> N/2 and recovers towards target
@@ -104,22 +114,22 @@ end
  pSS = (1.0 - pSN)/2.0
  divprod =[]
  if (N < targ - delta) # S -> 2S
-   cell1 = simulateSC(born1)
-   cell2 = simulateSC(born2)
+   cell1 = simulateSC(born1, defect_thresh = defect_thresh)
+   cell2 = simulateSC(born2, defect_thresh = defect_thresh)
    divprod = [cell1,cell2]
  elseif (N > targ + delta) # S -> 2N
    divprod = []
  elseif fate <= pSS  # S -> 2S
-   cell1 = simulateSC(born1)
-   cell2 = simulateSC(born2)
+   cell1 = simulateSC(born1, defect_thresh = defect_thresh)
+   cell2 = simulateSC(born2, defect_thresh = defect_thresh)
    divprod = [cell1,cell2]
  elseif fate > pSS + pSN # S -> 2N
    divprod = []
  else
-   cell1 = simulateSC(born1)
+   cell1 = simulateSC(born1, defect_thresh = defect_thresh)
    divprod = [cell1] # S -> S + N
  end
- divprod = [c for c in divprod if c[2]/(c[1]+c[2]) <= thresh] # Simulate loss of daughters with biochemical deficiency
+ divprod = [c for c in divprod if !isnan(c.vals[1])] # Simulate loss of daughters with biochemical deficiency
  return(divprod)
 end
 
@@ -153,7 +163,7 @@ end
   return(res)
 end
 
-@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = 1.0)
+@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
   stemcells = [(vals = v0, t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)) for i in 1:Nsc]
 
   times = [0.0]
@@ -166,18 +176,24 @@ end
     dividingCell = stemcells[dividingIndex]
     deleteat!(stemcells,dividingIndex)
     push!(times,dividingCell.tdiv)
-    append!(stemcells,divideCell(dividingCell, rng, 0.75; N = N, targ = Nsc, delta = 2, mu = mu, sigma = sigma, m = m, before = true, defect_thresh = 0.85))
+	append!(stemcells,divideCell(dividingCell, rng, pSN; N = N, targ = Nsc, delta = delta, mu = mu, sigma = sigma, m = m, before = true, defect_thresh = defect_thresh))
   end
   return(times,results)
 end
 
+dat = CSV.read("../data/MouseData.csv")
+dat.Days = dat.Age * 7
+epi = dat[dat.Tissue .== "Epithelium",:]
+
+
 @everywhere ss = 200
 @everywhere agemax = 2 # years
+@everywhere defect_thresh = 1.0
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.1, rfmut = 0.25, dmut = 0.1, m = 3e-5, target = ss, seed = nothing)
 #@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax),fill([60,140],24*50))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),fill([60,140],24*250))
 println(time)
 print('\a')
 
@@ -222,6 +238,7 @@ mlab = @sprintf("Number of cells: %i",length(resarr))
 quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
 plot!(ages/365.0,mid,lw=2)
 plot!(ages/365.0,hig,lw=1)
+plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter)
 savefig(quantplot, "quantplot.png")
 
 dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
@@ -233,10 +250,10 @@ function overThresh(thresh, fracarr)
 end
 
 threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding threshold", ylims = (0,1),title = mlab)
-plot!(ages/365.0, overThresh(0.8,fracarr), linecolour=:black)
+plot!(ages/365.0, overThresh(0.7,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 
-timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = [60,140], t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = 0.85),1:(24*12))
+timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = [60,140], t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),1:(24*24))
 println(timesc)
 print("\a")
 
@@ -252,13 +269,14 @@ for i in 1:length(scarr)
   totint = interpolate(([s.t for s in summ],),[float(s.wt + s.mut) for s in summ], Gridded(Linear()))(ages)
   append!(muts,[mutint])
   append!(tots,[totint])
-  
-  scparr = plot([
-   plot([d[1]/365 for d in Ndyn],[d[2] for d in Ndyn], xlabel="Age (y)", ylabel="Number of stem cells", ylims=(0,maximum([d[2] for d in Ndyn])),legend=false),
-   plot([d[1]/365 for d in mtDNA],[100*d[3]/(d[2]+d[3]) for d in mtDNA], xlabel="Age (y)", ylabel="Mutation load (%)", ylims=(0,100),legend=false)]
-   ..., layout = (1,2) 
-  )
-  savefig(scparr,@sprintf("SC%02d.png",i))
+  if(i <= 24)
+   scparr = plot([
+    plot([d[1]/365 for d in Ndyn],[d[2] for d in Ndyn], xlabel="Age (y)", ylabel="Number of stem cells", ylims=(0,maximum([d[2] for d in Ndyn])),legend=false),
+    plot([d[1]/365 for d in mtDNA],[100*d[3]/(d[2]+d[3]) for d in mtDNA], xlabel="Age (y)", ylabel="Mutation load (%)", ylims=(0,100),legend=false)]
+    ..., layout = (1,2) 
+   )
+   savefig(scparr,@sprintf("SC%02d.png",i))
+  end
 end
 
 fracs = hcat(muts...)./hcat(tots...)
@@ -272,9 +290,12 @@ hig = [getQuant(fracs[i,:],0.9) for i in 1:length(ages)];
 
 mlab = @sprintf("Number of crypts: %i",size(fracs)[2])
 
-quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load (%)", ylims = (0,1),title = mlab)
+quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
 plot!(ages/365.0,mid,lw=2)
 plot!(ages/365.0,hig,lw=1)
-#savefig(quantplot, "quantplot.png")
+plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter)
+savefig(quantplot, "SCquantplot.png")
+
+
 
 
