@@ -37,3 +37,6 @@ rsconnect/
 *.pdf
 *.png
 *.json
+
+# Julia
+.vs
