@@ -1,5 +1,6 @@
 @everywhere using Distributed
 using Plots
+using Plots.PlotMeasures
 using ProgressMeter
 @everywhere using Distributions
 @everywhere using Statistics
@@ -43,7 +44,7 @@ end
 @everywhere function lifespan(vals, agemax; defect_thresh = 1.0)
   ages = collect(0.0:1:(365.0*agemax))
   Nrecs = length(ages)
-  res = (age = ages, wt = fill(0,Nrecs), mut = fill(0,Nrecs))
+  res = (age = ages, wt = fill(0.0,Nrecs), mut = fill(0.0,Nrecs))
   t = 0.0
 
   #@showprogress 1 "Simulating..." for rec in 1:Nrecs
@@ -57,6 +58,9 @@ end
 end
 
 @everywhere function simulate(t, vals, tmax; defect_thresh = 1.0)
+  if isnan(vals[1]) || isnan(vals[2])
+    return(tmax,vals)
+  end
   while t < tmax
     N = sum(vals)
     if vals[2]/N <= defect_thresh
@@ -163,7 +167,7 @@ end
   return(res)
 end
 
-@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
+@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 1, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
   stemcells = [(vals = v0, t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)) for i in 1:Nsc]
 
   times = [0.0]
@@ -181,19 +185,26 @@ end
   return(times,results)
 end
 
+function initPop(source,N,ss)
+  muts = [Int(round(x/100.0)) for x in sample(rng,source,N)*ss]
+  wts = [ss-mut for mut in muts] 
+  p0 = [[wt,mut] for (wt,mut) in zip(wts,muts)]
+  return(p0)
+end
+
 dat = CSV.read("../data/MouseData.csv")
 dat.Days = dat.Age * 7
 epi = dat[dat.Tissue .== "Epithelium",:]
-
+mus = dat[dat.Tissue .== "Muscle",:]
 
 @everywhere ss = 200
 @everywhere agemax = 2 # years
-@everywhere defect_thresh = 1.0
+@everywhere defect_thresh = 0.9
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.1, rfmut = 0.25, dmut = 0.1, m = 3e-5, target = ss, seed = nothing)
 #@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),fill([60,140],24*250))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24*250,ss))
 println(time)
 print('\a')
 
@@ -217,28 +228,31 @@ end
 nrow = 3
 ncol = 4
 ymax = maximum([maximum([maximum(res.mut),maximum(res.wt),maximum(res.mut+res.wt)]) for res in resarr])
-if ymax <= 100
- for i = 1:Int(ceil(length(resarr)/(nrow*ncol)))
+for i = 1:min(4,Int(ceil(length(resarr)/(nrow*ncol))))
    parr = plot([plotRes(res,0,ymax) for res in resarr[((nrow*ncol)*(i-1) + 1):((nrow*ncol)*i)]] ...,layout=(nrow,ncol))
-   fname = @sprintf("test%02d.png",i)
+   fname = @sprintf("mtDNAdyn%02d.png",i)
    savefig(parr,fname)
- end
 end
+
 
 mutfrac = mutarr./totarr;
 #fracarr = mutfrac
-fracarr = removeDefective(mutfrac, 0.85)
+fracarr = removeDefective(mutfrac, 1.0)
 
 low = [getQuant(fracarr[i,:],0.1) for i in 1:length(ages)];
 mid = [getQuant(fracarr[i,:],0.5) for i in 1:length(ages)];
 hig = [getQuant(fracarr[i,:],0.9) for i in 1:length(ages)];
 
+getQuant(epi.MutationLoad[epi.Age.==10],0.1)
+getQuant(epi.MutationLoad[epi.Age.==10],0.9)
+
 mlab = @sprintf("Number of cells: %i",length(resarr))
 
-quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
-plot!(ages/365.0,mid,lw=2)
-plot!(ages/365.0,hig,lw=1)
-plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter)
+cols = [:red,:green,:blue,:orange]
+quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab, linecolor = :black, linestyle = :dash, bottom_margin = 10px)
+plot!(ages/365.0,mid,lw=2, linecolor = :black)
+plot!(ages/365.0,hig,lw=1, linecolor = :black, linestyle = :dash)
+plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter,markercolor = [cols[m] for m in epi.Mouse],markerstrokecolor = false)
 savefig(quantplot, "quantplot.png")
 
 dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
@@ -253,7 +267,7 @@ threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding thre
 plot!(ages/365.0, overThresh(0.7,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 
-timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = [60,140], t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),1:(24*24))
+timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24*24,ss))
 println(timesc)
 print("\a")
 
@@ -290,10 +304,11 @@ hig = [getQuant(fracs[i,:],0.9) for i in 1:length(ages)];
 
 mlab = @sprintf("Number of crypts: %i",size(fracs)[2])
 
-quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
-plot!(ages/365.0,mid,lw=2)
-plot!(ages/365.0,hig,lw=1)
-plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter)
+cols = [:red,:green,:blue,:orange]
+quantplot = plot(ages/365.0,low,lw=1,legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab, linecolor = :black, linestyle = :dash, bottom_margin = 10px)
+plot!(ages/365.0,mid,lw=2, linecolor = :black)
+plot!(ages/365.0,hig,lw=1, linecolor = :black, linestyle = :dash)
+plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter,markercolor = [cols[m] for m in epi.Mouse],markerstrokecolor = false)
 savefig(quantplot, "SCquantplot.png")
 
 
