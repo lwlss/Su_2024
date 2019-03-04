@@ -204,7 +204,7 @@ mus = dat[dat.Tissue .== "Muscle",:]
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24*250,ss))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24,ss))
 println(time)
 print('\a')
 
@@ -267,7 +267,7 @@ threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding thre
 plot!(ages/365.0, overThresh(0.7,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 
-timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24*24,ss))
+timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24,ss))
 println(timesc)
 print("\a")
 
