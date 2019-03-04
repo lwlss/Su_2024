@@ -199,9 +199,9 @@ mus = dat[dat.Tissue .== "Muscle",:]
 
 @everywhere ss = 200
 @everywhere agemax = 2 # years
-@everywhere defect_thresh = 0.9
-@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = 0.1, rfmut = 0.25, dmut = 0.1, m = 3e-5, target = ss, seed = nothing)
-#@everywhere rng, update = prepareSimulation(rfwt = 1.0, dwt = 0.14, rfmut = 1.0, dmut = 0.14, m = 3e-5, target = ss, seed = nothing)
+@everywhere defect_thresh = 0.9 #0.9
+@everywhere mtDNA_deg = 0.01 # 0.1
+@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
 time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24*250,ss))
