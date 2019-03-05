@@ -167,7 +167,7 @@ end
   return(res)
 end
 
-@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 1, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
+@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 0.5, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
   stemcells = [(vals = v0, t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)) for i in 1:Nsc]
 
   times = [0.0]
@@ -194,29 +194,31 @@ end
 
 dat = CSV.read("../data/MouseData.csv")
 dat.Days = dat.Age * 7
+dat2 = CSV.read("../data/CONNOR1_TG.csv")
+dat2.Days = dat2.Age * 7
 epi = dat[dat.Tissue .== "Epithelium",:]
-mus = dat[dat.Tissue .== "Muscle",:]
+mus = dat2[[x!==missing for x in dat2.MutationLoad],:]
+inits = mus.MutationLoad[mus.Age.==10]
 
 @everywhere ss = 200
 @everywhere agemax = 2 # years
-@everywhere defect_thresh = 0.9 #0.9
-@everywhere mtDNA_deg = 0.01 # 0.1
+@everywhere defect_thresh = 0.875 #0.9
+@everywhere mtDNA_deg = 0.0075 # 0.1
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24,ss))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(inits,24*500,ss))
 println(time)
 print('\a')
 
 # https://groups.google.com/d/msg/julia-users/0cV6v-FJD7c/eQcxNKWRAgAJ
 # func = interpolate((r.age,),r.wt, Gridded(Linear()));
 
-ages = collect(range(0,agemax*365,length=101))
+ages = collect(range(5,agemax*365,length=101))
 mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
 totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
 
 anint = rand(0:999999999)
-fname = @sprintf("mutarr_%09d.json",anint)
 open(@sprintf("mutarr_%09d.json",anint),"w") do f
     JSON.print(f, mutarr);
 end
@@ -267,11 +269,10 @@ threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding thre
 plot!(ages/365.0, overThresh(0.7,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 
-timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 2, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(mus.MutationLoad,24,ss))
+timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 3.0, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(inits,24*50,ss))
 println(timesc)
 print("\a")
 
-ages = collect(range(5,agemax*365,length=101))
 muts = []
 tots = []
 for i in 1:length(scarr)
@@ -310,6 +311,14 @@ plot!(ages/365.0,mid,lw=2, linecolor = :black)
 plot!(ages/365.0,hig,lw=1, linecolor = :black, linestyle = :dash)
 plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter,markercolor = [cols[m] for m in epi.Mouse],markerstrokecolor = false)
 savefig(quantplot, "SCquantplot.png")
+
+open(@sprintf("mutarr_crypt_%09d.json",anint),"w") do f
+    JSON.print(f, muts);
+end
+
+open(@sprintf("totarr_crypt_%09d.json",anint),"w") do f
+    JSON.print(f, tots);
+end
 
 
 
