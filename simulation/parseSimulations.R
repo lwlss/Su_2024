@@ -23,14 +23,15 @@ time = seq(5,2*365,length.out=dim(mutarr)[1])
 dcrypt = read.delim("../data/MouseData\ added number\ of mice\ 190219.csv",sep=",")
 dmusc = read.delim("../data/CONNOR1_TG.csv",sep=",")
 
+bw = 0.05
+#bw = "nrd0"
+
 musc_young = density(dmusc$MutationLoad[dmusc$Age==10]/100,na.rm=TRUE, from = 0, to = 1)
 musc_old = density(dmusc$MutationLoad[dmusc$Age==49]/100,na.rm=TRUE, from = 0, to = 1)
 simmusc_young = density(mutarr[which.min(abs(time/7 - 10)),]/totarr[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
 simmusc_old = density(mutarr[which.min(abs(time/7 - 49)),]/totarr[which.min(abs(time/7 - 49)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
 muscmaxd = max(c(musc_young$y,musc_old$y,simmusc_young$y,simmusc_old$y))
 
-bw = 0.05
-#bw = "nrd0"
 crypt_young = density(dcrypt$MutationLoad[dcrypt$Age==10]/100,na.rm=TRUE, from = 0, to = 1,bw=bw)
 crypt_old = density(dcrypt$MutationLoad[dcrypt$Age==50]/100,na.rm=TRUE, from = 0, to = 1,bw=bw)
 simcrypt_young = density(mutarrcrypt[which.min(abs(time/7 - 10)),]/totarrcrypt[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
@@ -71,3 +72,26 @@ legend("topleft",c("young","old","simulation","experiment"),col=c("black","red",
 
 par(op)
 dev.off()
+
+png("CompareDistributions2.png", width = 3000, height=2000,pointsize=50)
+op = par(mfrow=c(1,2))
+
+plot(time/7,mutarr[,1],type="n",ylim=c(0,1),ylab="Mutation load",main="Post-mitotic\nSkeletal muscle",xlab = "Age (d)")
+for(i in 1:min(150,dim(mutarr)[2])){
+  points(time/7,mutarr[,i]/totarr[,i],type="l",col=rgb(0,0,1,0.3))
+}
+points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10]/100,pch=16,col=rgb(0,0,0,0.2))
+points(dmusc$Age[dmusc$Age==49],dmusc$MutationLoad[dmusc$Age==49]/100,pch=16,col=rgb(1,0,0,0.2))
+
+lwd = 3
+
+plot(musc_young,xlim=c(0,1),ylim=c(0,muscmaxd),lwd=lwd,main="Post-mitotic\nSkeletal muscle",xlab="Mutation load")
+points(musc_old,type="l",col="red",lwd=lwd)
+points(simmusc_young,type="l",lty=2,lwd=lwd)
+points(simmusc_old,type="l",lty=2,col="red",lwd=lwd)
+
+legend("topleft",c("young","old","simulation","experiment"),col=c("black","red","grey","grey"),lwd=lwd,lty=c(1,1,1,2))
+
+par(op)
+dev.off()
+
