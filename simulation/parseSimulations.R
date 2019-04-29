@@ -21,49 +21,53 @@ totarrcrypt = parseJSON(sprintf("totarr_crypt_%s.json",rint))
 time = seq(5,2*365,length.out=dim(mutarr)[1])
 
 dcrypt = read.delim("../data/MouseData\ added number\ of mice\ 190219.csv",sep=",")
-dmusc = read.delim("../data/CONNOR1_TG.csv",sep=",")
+dmusc = read.delim("../data/CONNOR2_TG.csv",sep=",")
 
-bw = 0.05
+bw = 5.0
+pch = "-"
+datacol = rgb(1,0,0,0.35)
+cex = 2
 #bw = "nrd0"
 
-musc_young = density(dmusc$MutationLoad[dmusc$Age==10]/100,na.rm=TRUE, from = 0, to = 1)
-musc_old = density(dmusc$MutationLoad[dmusc$Age==49]/100,na.rm=TRUE, from = 0, to = 1)
-simmusc_young = density(mutarr[which.min(abs(time/7 - 10)),]/totarr[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
-simmusc_old = density(mutarr[which.min(abs(time/7 - 49)),]/totarr[which.min(abs(time/7 - 49)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
+musc_young = density(dmusc$MutationLoad[dmusc$Age==10],na.rm=TRUE, from = 0, to = 100)
+musc_old = density(dmusc$MutationLoad[dmusc$Age==49],na.rm=TRUE, from = 0, to = 100)
+simmusc_young = density(100*mutarr[which.min(abs(time/7 - 10)),]/totarr[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 100,bw=bw)
+simmusc_old = density(100*mutarr[which.min(abs(time/7 - 49)),]/totarr[which.min(abs(time/7 - 49)),],na.rm=TRUE, from = 0, to = 100,bw=bw)
 muscmaxd = max(c(musc_young$y,musc_old$y,simmusc_young$y,simmusc_old$y))
 
-crypt_young = density(dcrypt$MutationLoad[dcrypt$Age==10]/100,na.rm=TRUE, from = 0, to = 1,bw=bw)
-crypt_old = density(dcrypt$MutationLoad[dcrypt$Age==50]/100,na.rm=TRUE, from = 0, to = 1,bw=bw)
-simcrypt_young = density(mutarrcrypt[which.min(abs(time/7 - 10)),]/totarrcrypt[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
-simcrypt_old = density(mutarrcrypt[which.min(abs(time/7 - 50)),]/totarrcrypt[which.min(abs(time/7 - 50)),],na.rm=TRUE, from = 0, to = 1,bw=bw)
+crypt_young = density(dcrypt$MutationLoad[dcrypt$Age==10],na.rm=TRUE, from = 0, to = 100,bw=bw)
+crypt_old = density(dcrypt$MutationLoad[dcrypt$Age==50],na.rm=TRUE, from = 0, to = 100,bw=bw)
+simcrypt_young = density(100*mutarrcrypt[which.min(abs(time/7 - 10)),]/totarrcrypt[which.min(abs(time/7 - 10)),],na.rm=TRUE, from = 0, to = 100,bw=bw)
+simcrypt_old = density(100*mutarrcrypt[which.min(abs(time/7 - 50)),]/totarrcrypt[which.min(abs(time/7 - 50)),],na.rm=TRUE, from = 0, to = 100,bw=bw)
 
 cryptmaxd = max(c(crypt_young$y,crypt_old$y,simcrypt_young$y,simcrypt_old$y))
 
 png("CompareDistributions.png", width = 3000, height=2000,pointsize=50)
-op = par(mfrow=c(2,2))
+op = par(mfrow=c(2,2),mar=c(4, 4, 3, 1) + 0.1)
 
 plot(time/7,mutarr[,1],type="n",ylim=c(0,1),ylab="Mutation load",main="Post-mitotic\nSkeletal muscle",xlab = "Age (d)")
 for(i in 1:min(50,dim(mutarr)[2])){
   points(time/7,mutarr[,i]/totarr[,i],type="l",col=rgb(0,0,1,0.3))
 }
-points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10]/100,pch=16,col=rgb(0,0,0,0.2))
-points(dmusc$Age[dmusc$Age==49],dmusc$MutationLoad[dmusc$Age==49]/100,pch=16,col=rgb(1,0,0,0.2))
+ages = dmusc$Age[dmusc$Age>=49]
+points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10]/100,pch=pch,col=datacol,cex=cex)
+points(rep(mean(unique(ages)),length(ages)),dmusc$MutationLoad[dmusc$Age>=49]/100,pch=pch,col=datacol,cex=cex)
 
 plot(time/7,mutarr[,1],type="n",ylim=c(0,1),ylab="Mutation load",main="Mitotic\nEpithelial crypt stem cells",xlab = "Age (d)")
 for(i in 1:min(50,dim(mutarrcrypt)[2])){
   points(time/7,mutarrcrypt[,i]/totarrcrypt[,i],type="l",col=rgb(0,0,1,0.3))
 }
-points(dcrypt$Age[dcrypt$Age==10],dcrypt$MutationLoad[dcrypt$Age==10]/100,pch=16,col=rgb(0,0,0,0.2))
-points(dcrypt$Age[dcrypt$Age==50],dcrypt$MutationLoad[dcrypt$Age==50]/100,pch=16,col=rgb(1,0,0,0.2))
+points(dcrypt$Age[dcrypt$Age==10],dcrypt$MutationLoad[dcrypt$Age==10]/100,pch=pch,col=datacol,cex=cex)
+points(dcrypt$Age[dcrypt$Age==50],dcrypt$MutationLoad[dcrypt$Age==50]/100,pch=pch,col=datacol,cex=cex)
 
 lwd = 2
 
-plot(musc_young,xlim=c(0,1),ylim=c(0,muscmaxd),lwd=lwd,main="Post-mitotic\nSkeletal muscle",xlab="Mutation load")
+plot(musc_young,xlim=c(0,100),ylim=c(0,muscmaxd),lwd=lwd,main="Post-mitotic\nSkeletal muscle",xlab="Mutation load")
 points(musc_old,type="l",col="red",lwd=lwd)
 points(simmusc_young,type="l",lty=2,lwd=lwd)
 points(simmusc_old,type="l",lty=2,col="red",lwd=lwd)
 
-plot(crypt_young,xlim=c(0,1),ylim=c(0,cryptmaxd),lwd=lwd,main="Mitotic\nEpithelial crypt stem cells",xlab="Mutation load")
+plot(crypt_young,xlim=c(0,100),ylim=c(0,cryptmaxd),lwd=lwd,main="Mitotic\nEpithelial crypt stem cells",xlab="Mutation load")
 points(crypt_old,type="l",col="red",lwd=lwd)
 points(simcrypt_young,type="l",lty=2,lwd=lwd)
 points(simcrypt_old,type="l",lty=2,col="red",lwd=lwd)
@@ -74,18 +78,19 @@ par(op)
 dev.off()
 
 png("CompareDistributions2.png", width = 3000, height=2000,pointsize=50)
-op = par(mfrow=c(1,2))
+op = par(mfrow=c(1,2),mar=c(4, 4, 3, 1) + 0.1)
 
-plot(time/7,mutarr[,1],type="n",ylim=c(0,1),ylab="Mutation load",main="Post-mitotic\nSkeletal muscle",xlab = "Age (d)")
+plot(time/7,mutarr[,1],type="n",ylim=c(0,100),ylab="Mutation load (%)",main="Post-mitotic\nSkeletal muscle",xlab = "Age (d)")
 for(i in 1:min(150,dim(mutarr)[2])){
-  points(time/7,mutarr[,i]/totarr[,i],type="l",col=rgb(0,0,1,0.3))
+  points(time/7,100*mutarr[,i]/totarr[,i],type="l",col=rgb(0,0,1,0.3))
 }
-points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10]/100,pch=16,col=rgb(0,0,0,0.2))
-points(dmusc$Age[dmusc$Age==49],dmusc$MutationLoad[dmusc$Age==49]/100,pch=16,col=rgb(1,0,0,0.2))
-
+ages = dmusc$Age[dmusc$Age>=49]
+points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10],pch=pch,col=datacol,cex=cex)
+points(rep(mean(unique(ages)),length(ages)),dmusc$MutationLoad[dmusc$Age>=49],pch=pch,col=datacol,cex=cex)
+3
 lwd = 3
 
-plot(musc_young,xlim=c(0,1),ylim=c(0,muscmaxd),lwd=lwd,main="Post-mitotic\nSkeletal muscle",xlab="Mutation load")
+plot(musc_young,xlim=c(0,100),ylim=c(0,muscmaxd),lwd=lwd,main="Post-mitotic\nSkeletal muscle",xlab="Mutation load")
 points(musc_old,type="l",col="red",lwd=lwd)
 points(simmusc_young,type="l",lty=2,lwd=lwd)
 points(simmusc_old,type="l",lty=2,col="red",lwd=lwd)
