@@ -107,30 +107,35 @@ legend("topleft",c("young","old","experiment","simulation"),col=c("black","red",
 par(op)
 dev.off()
 
+
+pdf("Individuals.pdf", useDingbats=FALSE)
+
 # Split figures
 for (mouse in common){
 
-op = par(mfrow=c(1,2),mar=c(4, 4, 3, 1) + 0.1)
+op = par(mfrow=c(1,2),mar=c(4, 4, 3, 1) + 0.1,oma=c(0,0,0,0))
 
 plot(time/7,mutarr[,1],type="n",ylim=c(0,100),ylab="Mutation load (%)",main="Post-mitotic\nSkeletal muscle",xlab = "Age (weeks)",cex.lab=1.5,cex.axis=1.5,cex.main=1.25)
 for(i in 1:min(50,dim(mutarr)[2])){
   points(time/7,100*mutarr[,i]/totarr[,i],type="l",col=rgb(0,0,1,alpha ))
 }
-ages = dmusc$Age[dmusc$Age>=49]
-points(dmusc$Age[dmusc$Age==10],dmusc$MutationLoad[dmusc$Age==10],pch=pch,col=datacol,cex=cex)
-points(rep(mean(unique(ages)),length(ages)),dmusc$MutationLoad[dmusc$Age>=49],pch=pch,col=datacol,cex=cex)
+ages = dmusc$Age[(dmusc$Age>=49)&(dmusc$Mouse==mouse)]
+points(dmusc$Age[(dmusc$Age==10)&(dmusc$Mouse==mouse)],dmusc$MutationLoad[(dmusc$Age==10)&(dmusc$Mouse==mouse)],pch=pch,col=datacol,cex=cex)
+points(rep(mean(unique(ages)),length(ages)),dmusc$MutationLoad[(dmusc$Age>=49)&(dmusc$Mouse==mouse)],pch=pch,col=datacol,cex=cex)
 
 plot(time/7,100*mutarr[,1],type="n",ylim=c(0,100),ylab="Mutation load (%)",main="Mitotic\nEpithelial crypt stem cells",xlab = "Age (weeks)",cex.lab=1.5,cex.axis=1.5,cex.main=1.25)
 for(i in 1:min(50,dim(mutarrcrypt)[2])){
   points(time/7,100*mutarrcrypt[,i]/totarrcrypt[,i],type="l",col=rgb(0,0,1,alpha ))
 }
-points(dcrypt$Age[dcrypt$Age==10],dcrypt$MutationLoad[dcrypt$Age==10],pch=pch,col=datacol,cex=cex)
-points(dcrypt$Age[dcrypt$Age==50],dcrypt$MutationLoad[dcrypt$Age==50],pch=pch,col=datacol,cex=cex)
+points(dcrypt$Age[(dcrypt$Age==10)&(dcrypt$Mouse==mouse)],dcrypt$MutationLoad[(dcrypt$Age==10)&(dcrypt$Mouse==mouse)],pch=pch,col=datacol,cex=cex)
+points(dcrypt$Age[(dcrypt$Age==50)&(dcrypt$Mouse==mouse)],dcrypt$MutationLoad[(dcrypt$Age==50)&(dcrypt$Mouse==mouse)],pch=pch,col=datacol,cex=cex)
 
 par(op)
+title(paste("Mouse ID:",mouse),outer=TRUE,line=-1)
 
 }
 
+dev.off()
 
 
 
