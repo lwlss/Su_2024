@@ -202,7 +202,8 @@ inits = mus.MutationLoad[mus.Age.==10]
 
 @everywhere ss = 200
 @everywhere agemax = 2 # years
-@everywhere defect_thresh = 1.0 #0.9
+@everywhere defect_thresh = 0.875 #0.9
+#@everywhere defect_thresh = 1.0 #0.9
 @everywhere mtDNA_deg = 0.0075 # 0.1
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
 
