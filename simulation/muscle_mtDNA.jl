@@ -125,10 +125,11 @@ epi = dat[dat.Tissue .== "Epithelium",:]
 mus = dat2[[x!==missing for x in dat2.MutationLoad],:]
 inits = mus.MutationLoad[mus.Age.==10]
 
-inits = 100*rand(Normal(0.9, 0.025), 1000)
+#inits = 100*rand(Normal(0.9, 0.025), 1000)
+inits = zeros(100)
 
 @everywhere ss = 200
-@everywhere agemax = 12 # years
+@everywhere agemax = 110 # years
 @everywhere lethal_thresh = 0.975 #0.9
 @everywhere mtDNA_deg = 0.0075 # 0.1
 @everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
@@ -184,11 +185,11 @@ plot!(ages/365.0,mid,lw=2, linecolor = :black)
 plot!(ages/365.0,hig,lw=1, linecolor = :black, linestyle = :dash)
 plot!(ages/365.0,mean_frac,lw=2, linecolor = :red)
 #plot!(epi.Days/365.0,epi.MutationLoad/100,seriestype=:scatter,markercolor = [cols[m] for m in epi.Mouse],markerstrokecolor = false)
-savefig(quantplot, "human_muscle_quantplot.png")
+savefig(quantplot, "human_muscle_quantplot_B.png")
 
 dynplot = plot(legend=false,xlabel="Age (y)", ylabel="Mutation load", ylims = (0,1),title = mlab)
 plot!(ages/365.0, fracarr[:,1:min(size(fracarr)[2],1000)], linealpha=0.1, linecolour=:black)
-savefig(dynplot, "human_muscle_dynplot.png")
+savefig(dynplot, "human_muscle_dynplot_B.png")
 
 function overThresh(thresh, fracarr)
   [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
@@ -202,4 +203,4 @@ xtickfontsize=fsize,ytickfontsize=fsize,xguidefontsize=fsize,yguidefontsize=fsiz
 for thresh in defthreshes
   plot!(ages/365.0, overThresh(thresh,fracarr))
 end
-savefig(threshplot, "human_muscle_threshplot.png")
+savefig(threshplot, "human_muscle_threshplot_B.png")
