@@ -12,7 +12,7 @@ import Dates
 using DataFrames
 using CSV
 
-@everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
+@everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 0.0, target = 3000, seed = nothing)
  if seed == nothing 
    seed = rand(0:999999999);
  end   
@@ -117,9 +117,9 @@ function initPop(source,N,ss)
   return(p0)
 end
 
-dat = CSV.read("../data/MouseData.csv")
+dat = CSV.read("../data/MouseData.csv",DataFrame);
 dat.Days = dat.Age * 7
-dat2 = CSV.read("../data/CONNOR1_TG.csv")
+dat2 = CSV.read("../data/CONNOR1_TG.csv",DataFrame);
 dat2.Days = dat2.Age * 7
 epi = dat[dat.Tissue .== "Epithelium",:]
 mus = dat2[[x!==missing for x in dat2.MutationLoad],:]
@@ -130,12 +130,14 @@ inits = zeros(100)
 
 @everywhere ss = 200
 @everywhere agemax = 110 # years
-@everywhere lethal_thresh = 0.975 #0.9
-@everywhere mtDNA_deg = 0.0075 # 0.1
-@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
+@everywhere lethal_thresh = 0.875 #0.9
+@everywhere mtDNA_deg = 0.075 # 0.1
+#@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 0.0, target = ss, seed = nothing)
+
+@everywhere rng, update = prepareSimulation(rfwt = 2.5, dwt = mtDNA_deg, rfmut = 2.5, dmut = mtDNA_deg, m = 0.0, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax, lethal_thresh = lethal_thresh),initPop(inits,24*500,ss))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, lethal_thresh = lethal_thresh),initPop(inits,24*1000,ss))
 println(time)
 print('\a')
 
@@ -143,8 +145,8 @@ print('\a')
 # func = interpolate((r.age,),r.wt, Gridded(Linear()));
 
 ages = collect(range(5,agemax*365,length=101))
-mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
-totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
+mutarr = hcat([interpolate((Interpolations.deduplicate_knots!(r.age;move_knots =true),),Interpolations.deduplicate_knots!(r.mut;move_knots =true), Gridded(Linear()))(ages) for r in resarr]...);
+totarr = hcat([interpolate((Interpolations.deduplicate_knots!(r.age;move_knots =true),),Interpolations.deduplicate_knots!(r.mut+r.wt; move_knots =true), Gridded(Linear()))(ages) for r in resarr]...);
 
 anint = rand(0:999999999)
 open(@sprintf("human_muscle_mutarr_%09d.json",anint),"w") do f
@@ -195,7 +197,10 @@ function overThresh(thresh, fracarr)
   [sum([x >= thresh for x in fracarr[i,:]])/length(fracarr[i,:]) for i in 1:size(fracarr)[1]]
 end
 
-mkdir("threshplots")
+if (!isdir("threshplots"))
+    mkdir("threshplots")
+end
+
 defthreshes = [0.0:0.05:1.0;];
 fsize = 18;
 threshplot = plot(legend=false,xlabel="Time since first biopsy (y)", ylabel="Fraction exceeding threshold", ylims = (0,1),title = mlab,

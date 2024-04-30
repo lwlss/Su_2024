@@ -12,7 +12,7 @@ import Dates
 using DataFrames
 using CSV
 
-@everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 3e-5, target = 3000, seed = nothing)
+@everywhere function prepareSimulation(;rfwt = 0.25, dwt = 0.14, rfmut = 0.25, dmut = 0.14, m = 0.0, target = 3000, seed = nothing)
  if seed == nothing 
    seed = rand(0:999999999);
  end   
@@ -89,7 +89,7 @@ end
   return(max(0,rand(rng,Normal(mu,sigma))))
 end
 
-@everywhere function divideCell(sc, rng, pSN; N = 7, targ = 7, delta = 2, mu = 10, sigma = 1, m = 1e-5, before = true, defect_thresh = 1.0)
+@everywhere function divideCell(sc, rng, pSN; N = 7, targ = 7, delta = 2, mu = 10, sigma = 1, m = 1e-5, before = true, defect_thresh = 1.0, randSeg = true)
  if sum([isnan(val) for val in sc.vals]) > 0
    return([])
  end
@@ -108,6 +108,10 @@ end
  end
  
  d1 = rand(Bool,length(wildtypes))
+ if(!randSeg)
+   nwt = sum(wildtypes);
+   nmut = length(wildtypes) - nwt;
+ end
  d2 = [!x for x in d1]
  daughter1 = wildtypes[d1]
  daughter2 = wildtypes[d2]
@@ -167,7 +171,7 @@ end
   return(res)
 end
 
-@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 0.5, sigma = 0.1, m = 3e-5, defect_thresh = 1.0, pSN = 0.75, delta = 2)
+@everywhere function simCrypt(;Nsc = 7, v0 = [100,100], t_days = 100, mu = 0.5, sigma = 0.1, m = 0.0, defect_thresh = 1.0, pSN = 0.75, delta = 2)
   stemcells = [(vals = v0, t0 = 0.0, tdiv = nextDiv(rng; mu=mu,sigma=sigma)) for i in 1:Nsc]
 
   times = [0.0]
@@ -192,9 +196,9 @@ function initPop(source,N,ss)
   return(p0)
 end
 
-dat = CSV.read("../data/MouseData.csv")
+dat = CSV.read("../data/MouseData.csv",DataFrame)
 dat.Days = dat.Age * 7
-dat2 = CSV.read("../data/CONNOR1_TG.csv")
+dat2 = CSV.read("../data/CONNOR1_TG.csv",DataFrame)
 dat2.Days = dat2.Age * 7
 epi = dat[dat.Tissue .== "Epithelium",:]
 mus = dat2[[x!==missing for x in dat2.MutationLoad],:]
@@ -204,11 +208,12 @@ inits = mus.MutationLoad[mus.Age.==10]
 @everywhere agemax = 2 # years
 @everywhere defect_thresh = 0.875 #0.9
 #@everywhere defect_thresh = 1.0 #0.9
-@everywhere mtDNA_deg = 0.0075 # 0.1
-@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 3e-5, target = ss, seed = nothing)
+@everywhere mtDNA_deg = 0.075 # 0.1
+#@everywhere rng, update = prepareSimulation(rfwt = 0.25, dwt = mtDNA_deg, rfmut = 0.25, dmut = mtDNA_deg, m = 0.0, target = ss, seed = nothing)
+@everywhere rng, update = prepareSimulation(rfwt = 2.5, dwt = mtDNA_deg, rfmut = 2.5, dmut = mtDNA_deg, m = 0.0, target = ss, seed = nothing)
 
 println("Starting simulations!")
-time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(inits,24*500,ss))
+time = @elapsed resarr = pmap(x -> lifespan(x, agemax, defect_thresh = defect_thresh),initPop(inits,24*1000,ss))
 println(time)
 print('\a')
 
@@ -216,8 +221,9 @@ print('\a')
 # func = interpolate((r.age,),r.wt, Gridded(Linear()));
 
 ages = collect(range(5,agemax*365,length=101))
-mutarr = hcat([interpolate((r.age,),r.mut, Gridded(Linear()))(ages) for r in resarr]...);
-totarr = hcat([interpolate((r.age,),r.mut+r.wt, Gridded(Linear()))(ages) for r in resarr]...);
+mutarr = hcat([interpolate((Interpolations.deduplicate_knots!(r.age;move_knots =true),),Interpolations.deduplicate_knots!(r.mut;move_knots =true), Gridded(Linear()))(ages) for r in resarr]...);
+
+totarr = hcat([interpolate((Interpolations.deduplicate_knots!(r.age;move_knots =true),),Interpolations.deduplicate_knots!(r.mut+r.wt; move_knots =true), Gridded(Linear()))(ages) for r in resarr]...);
 
 anint = rand(0:999999999)
 open(@sprintf("mutarr_%09d.json",anint),"w") do f
@@ -270,19 +276,20 @@ threshplot = plot(legend=false,xlabel="Age (y)", ylabel="Fraction exceeding thre
 plot!(ages/365.0, overThresh(0.7,fracarr), linecolour=:black)
 savefig(threshplot, "threshplot.png")
 
-timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 3.0, sigma = 0.1, m = 3e-5, defect_thresh = defect_thresh),initPop(inits,24*50,ss))
+timesc = @elapsed scarr = pmap(x -> simCrypt(Nsc = 7, v0 = x, t_days = 365*agemax, mu = 3.0, sigma = 0.1, m = 0.0, defect_thresh = defect_thresh),initPop(inits,24*50,ss))
 println(timesc)
 print("\a")
 
 muts = []
 tots = []
 for i in 1:length(scarr)
-  times, results = scarr[i]
-  Ndyn = [(minimum([c.tdiv for c in sc]),length(sc)) for sc in results]
-  mtDNA = [(minimum([c.tdiv for c in sc]),sum([c.vals[1] for c in sc]),sum([c.vals[2] for c in sc])) for sc in results]
-  summ = [(t = minimum([c.tdiv for c in sc]), N = length(sc), wt = sum([c.vals[1] for c in sc]), mut = sum([c.vals[2] for c in sc])) for sc in results]
-  mutint = interpolate(([s.t for s in summ],),[float(s.mut) for s in summ], Gridded(Linear()))(ages)
-  totint = interpolate(([s.t for s in summ],),[float(s.wt + s.mut) for s in summ], Gridded(Linear()))(ages)
+  local times, results = scarr[i]
+  local Ndyn = [(minimum([c.tdiv for c in sc]),length(sc)) for sc in results]
+  local mtDNA = [(minimum([c.tdiv for c in sc]),sum([c.vals[1] for c in sc]),sum([c.vals[2] for c in sc])) for sc in results]
+  local summ = [(t = minimum([c.tdiv for c in sc]), N = length(sc), wt = sum([c.vals[1] for c in sc]), mut = sum([c.vals[2] for c in sc])) for sc in results]
+  local mutint = interpolate((Interpolations.deduplicate_knots!([s.t for s in summ];move_knots =true),),Interpolations.deduplicate_knots!([float(s.mut) for s in summ];move_knots =true), Gridded(Linear()))(ages)
+  
+  local totint = interpolate((Interpolations.deduplicate_knots!([s.t for s in summ];move_knots =true),),Interpolations.deduplicate_knots!([float(s.mut+s.wt) for s in summ];move_knots =true), Gridded(Linear()))(ages)
   append!(muts,[mutint])
   append!(tots,[totint])
   if(i <= 24)
